@@ -3,7 +3,9 @@ from datetime import date
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, Query, Response
+
+from apps.backend.src.core.errors import http_error as _http_error
 
 from apps.backend.src.features.inventory.application.services import Actor, InventoryService
 from apps.backend.src.features.inventory.dependencies import get_actor, get_inventory_service
@@ -13,12 +15,6 @@ from apps.backend.src.features.inventory.presentation.plant_routes import router
 
 router = APIRouter()
 router.include_router(plant_router)
-
-
-def _http_error(e: Exception) -> HTTPException:
-    # LookupError → recurso inexistente (o ajeno); ValueError → regla de negocio
-    status = 404 if isinstance(e, LookupError) else 400
-    return HTTPException(status_code=status, detail=str(e.args[0]) if e.args else str(e))
 
 
 # ---------- lotes ----------
@@ -204,7 +200,7 @@ def export_harvests(
         export_filename("cosechas", date_from, date_to),
         ["fecha", "lote", "variedad", "cantidad_kg", "calidad", "notas"],
         ([h.harvested_on.isoformat(), safe_cell(p.name), safe_cell(p.variety),
-          f"{float(h.quantity_kg):.2f}", h.grade, safe_cell(h.notes)] for p, h in rows),
+          f"{h.quantity_kg:.2f}", h.grade, safe_cell(h.notes)] for p, h in rows),
     )
 
 
@@ -225,7 +221,7 @@ def export_costs(
         export_filename("costos", date_from, date_to),
         ["fecha", "lote", "categoria", "monto", "notas"],
         ([c.incurred_on.isoformat(), safe_cell(p.name), c.category,
-          f"{float(c.amount):.2f}", safe_cell(c.notes)] for p, c in rows),
+          f"{c.amount:.2f}", safe_cell(c.notes)] for p, c in rows),
     )
 
 

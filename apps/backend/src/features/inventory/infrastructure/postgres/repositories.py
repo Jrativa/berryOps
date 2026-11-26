@@ -18,7 +18,7 @@ class PlotRepository(repository_ports.PlotRepository):
     def create(self, owner_id: UUID, data: dict):
         plot = models.Plot(owner_id=owner_id, **data)
         self.db.add(plot)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(plot)
         return plot
 
@@ -43,7 +43,7 @@ class PlotRepository(repository_ports.PlotRepository):
     def update(self, plot, fields: dict):
         for key, value in fields.items():
             setattr(plot, key, value)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(plot)
         return plot
 
@@ -55,7 +55,7 @@ class PlotRepository(repository_ports.PlotRepository):
 
     def delete(self, plot) -> None:
         self.db.delete(plot)
-        self.db.commit()
+        self.db.flush()
 
 
 class HarvestRepository(repository_ports.HarvestRepository):
@@ -65,7 +65,7 @@ class HarvestRepository(repository_ports.HarvestRepository):
     def create(self, plot_id: UUID, data: dict):
         harvest = models.Harvest(plot_id=plot_id, **data)
         self.db.add(harvest)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(harvest)
         return harvest
 
@@ -95,13 +95,13 @@ class HarvestRepository(repository_ports.HarvestRepository):
     def update(self, harvest, fields: dict):
         for key, value in fields.items():
             setattr(harvest, key, value)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(harvest)
         return harvest
 
     def delete(self, harvest) -> None:
         self.db.delete(harvest)
-        self.db.commit()
+        self.db.flush()
 
 
 class CostRepository(repository_ports.CostRepository):
@@ -111,7 +111,7 @@ class CostRepository(repository_ports.CostRepository):
     def create(self, plot_id: UUID, data: dict):
         cost = models.PlotCost(plot_id=plot_id, **data)
         self.db.add(cost)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(cost)
         return cost
 
@@ -147,13 +147,13 @@ class CostRepository(repository_ports.CostRepository):
     def update(self, cost, fields: dict):
         for key, value in fields.items():
             setattr(cost, key, value)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(cost)
         return cost
 
     def delete(self, cost) -> None:
         self.db.delete(cost)
-        self.db.commit()
+        self.db.flush()
 
 
 class PlantRepository(plant_ports.PlantRepository):
@@ -173,12 +173,12 @@ class PlantRepository(plant_ports.PlantRepository):
                 [{"plot_id": plot_id, "row": r, "col": c, "status": "healthy"}
                  for r, c in positions[i:i + self.CHUNK]],
             )
-        self.db.commit()
+        self.db.flush()
 
     def create(self, plot_id: UUID, row: int, col: int):
         plant = models.Plant(plot_id=plot_id, row=row, col=col, status="healthy")
         self.db.add(plant)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(plant)
         return plant
 
@@ -225,11 +225,11 @@ class PlantRepository(plant_ports.PlantRepository):
     def set_status(self, plants: Sequence, status: str) -> None:
         for p in plants:
             p.status = status
-        self.db.commit()
+        self.db.flush()
 
     def delete(self, plant) -> None:
         self.db.delete(plant)
-        self.db.commit()
+        self.db.flush()
 
 
 class ObservationRepository(plant_ports.ObservationRepository):
@@ -239,9 +239,7 @@ class ObservationRepository(plant_ports.ObservationRepository):
     def create_many(self, items: Sequence[dict]) -> Sequence:
         objs = [models.PlantObservation(**item) for item in items]
         self.db.add_all(objs)
-        self.db.commit()
-        for o in objs[:1]:  # solo se devuelve la primera (alta individual)
-            self.db.refresh(o)
+        self.db.flush()  # id y created_at los asigna Python: todos los objetos quedan completos
         return objs
 
     def list_for_plot(self, plot_id: UUID) -> Sequence:

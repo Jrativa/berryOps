@@ -27,14 +27,16 @@ def seeded(client, service, admin_role, worker_role):
             "admin_role": admin_role, "worker_role": worker_role}
 
 
-# ---------- arranque inicial ----------
-def test_bootstrap_allows_first_role_and_user_without_token(client):
-    r = client.post("/auth/roles/", json={"name": "admin"})
-    assert r.status_code == 200
-    role_id = r.json()["id"]
-    assert client.post("/auth/users/", json=user_payload(role_id, "root")).status_code == 200
-    # a partir de aqui ya hay usuarios: se exige token
+# ---------- sin arranque anonimo ----------
+def test_no_anonymous_bootstrap_even_with_zero_users(client, admin_role):
     assert client.post("/auth/roles/", json={"name": "otro"}).status_code == 401
+    assert client.post("/auth/users/", json=user_payload(admin_role.id, "root")).status_code == 401
+
+
+def test_zero_admins_non_admin_token_is_403(client, service, worker_role):
+    service.register_user(schemas.UserCreate(**user_payload(worker_role.id, "operario1")))
+    token = do_login(client, "operario1")["access_token"]
+    assert client.post("/auth/roles/", json={"name": "x"}, headers=auth(token)).status_code == 403
 
 
 # ---------- roles solo admin ----------
@@ -66,10 +68,20 @@ def test_create_user_admin_only(client, seeded):
 
 
 def test_get_user_requires_auth(client, seeded):
-    assert client.get("/auth/users/admin1").status_code == 401
-    r = client.get("/auth/users/admin1", headers=auth(seeded["worker"]["access_token"]))
-    assert r.status_code == 200 and "password" not in r.text
-    assert client.get("/auth/users/nadie", headers=auth(seeded["worker"]["access_token"])).status_code == 404
+    assert client.get("/auth/users/operario1").status_code == 401
+
+
+def test_get_user_returns_only_own_profile(client, seeded):
+    r = client.get("/auth/users/operario1", headers=auth(seeded["worker"]["access_token"]))
+    assert r.status_code == 200 and r.json()["username"] == "operario1" and "password" not in r.text
+
+
+def test_get_other_user_is_same_404_as_unknown_user(client, seeded):
+    headers = auth(seeded["worker"]["access_token"])
+    existing = client.get("/auth/users/admin1", headers=headers)
+    unknown = client.get("/auth/users/nadie", headers=headers)
+    assert existing.status_code == unknown.status_code == 404
+    assert existing.json() == unknown.json()
 
 
 def test_invalid_token_is_401(client, seeded):

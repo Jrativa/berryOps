@@ -19,7 +19,7 @@ class RoleRepository(repository_ports.RoleRepository):
     def create(self, role: schemas.RoleCreate):
         db_role = models.Role(name=role.name, description=role.description)
         self.db.add(db_role)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(db_role)
         return db_role
 
@@ -57,7 +57,7 @@ class UserRepository(repository_ports.UserRepository):
             created_by=user.created_by
         )
         self.db.add(db_user)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(db_user)
         return db_user
 
@@ -72,7 +72,7 @@ class SessionRepository(repository_ports.SessionRepository):
             expires_at=expires_at
         )
         self.db.add(db_session)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(db_session)
         return db_session
 
@@ -83,11 +83,11 @@ class SessionRepository(repository_ports.SessionRepository):
 
     def revoke(self, session) -> None:
         session.is_revoked = True
-        self.db.commit()
+        self.db.flush()
 
     def revoke_all_for_user(self, user_id) -> None:
         self.db.query(models.UserSession).filter(
             models.UserSession.user_id == user_id,
             models.UserSession.is_revoked == False
         ).update({"is_revoked": True})
-        self.db.commit()
+        self.db.flush()

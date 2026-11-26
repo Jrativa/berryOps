@@ -2,7 +2,9 @@
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, Query, Response
+
+from apps.backend.src.core.errors import http_error as _http_error
 
 from apps.backend.src.features.inventory.application.plant_service import PlantService
 from apps.backend.src.features.inventory.application.services import Actor
@@ -12,11 +14,6 @@ from apps.backend.src.features.inventory.domain import plant_schemas as ps
 from apps.backend.src.features.inventory.presentation.csv_export import csv_response, safe_cell
 
 router = APIRouter()
-
-
-def _http_error(e: Exception) -> HTTPException:
-    status = 404 if isinstance(e, LookupError) else 400
-    return HTTPException(status_code=status, detail=str(e.args[0]) if e.args else str(e))
 
 
 @router.post("/plots/{plot_id}/plants/generate", response_model=ps.GenerateResult)
