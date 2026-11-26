@@ -2,11 +2,21 @@
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Optional
 from uuid import UUID
 
 from apps.backend.src.features.inventory.domain import schemas
 from apps.backend.src.features.inventory.domain.repository_ports import CostRepository, HarvestRepository, PlotRepository
+
+
+ZERO = Decimal(0)
+_CENTS = Decimal("0.01")
+
+
+def _round2(value: Decimal) -> Decimal:
+    """Redondeo único del resumen, al salir: 2 decimales, ROUND_HALF_UP (los cálculos internos son exactos)."""
+    return value.quantize(_CENTS, rounding=ROUND_HALF_UP)
 
 
 @dataclass(frozen=True)
@@ -215,21 +225,20 @@ class InventoryService:
         harvests = self.harvest_repo.list_for_plots(list(plots), date_from, date_to)
 
         costs = self.cost_repo.list_for_plots(list(plots), date_from, date_to)
-        cost_by_plot: dict = defaultdict(float)
-        cost_by_category: dict = defaultdict(float)
+        cost_by_plot: dict = defaultdict(Decimal)
+        cost_by_category: dict = defaultdict(Decimal)
         for c in costs:
-            amount = float(c.amount)
-            cost_by_plot[c.plot_id] += amount
-            cost_by_category[c.category] += amount
-        total_cost = sum(cost_by_plot.values())
+            cost_by_plot[c.plot_id] += c.amount
+            cost_by_category[c.category] += c.amount
+        total_cost = sum(cost_by_plot.values(), ZERO)
 
-        total = 0.0
-        by_plot: dict = defaultdict(float)
-        by_month: dict = defaultdict(float)
-        by_grade: dict = defaultdict(float)
+        total = ZERO
+        by_plot: dict = defaultdict(Decimal)
+        by_month: dict = defaultdict(Decimal)
+        by_grade: dict = defaultdict(Decimal)
         last: Optional[date] = None
         for h in harvests:
-            kg = float(h.quantity_kg)
+            kg = h.quantity_kg
             total += kg
             by_plot[h.plot_id] += kg
             by_month[h.harvested_on.strftime("%Y-%m")] += kg
@@ -239,38 +248,38 @@ class InventoryService:
 
         plot_rows = []
         # lotes con cosecha o con costos en el periodo; primero los que más produjeron
-        plot_ids = sorted(set(by_plot) | set(cost_by_plot), key=lambda pid: (-by_plot.get(pid, 0.0), plots[pid].name))
+        plot_ids = sorted(set(by_plot) | set(cost_by_plot), key=lambda pid: (-by_plot.get(pid, ZERO), plots[pid].name))
         for plot_id in plot_ids:
-            kg = by_plot.get(plot_id, 0.0)
-            cost = cost_by_plot.get(plot_id, 0.0)
-            area = float(plots[plot_id].area_ha)
+            kg = by_plot.get(plot_id, ZERO)
+            cost = cost_by_plot.get(plot_id, ZERO)
+            area = plots[plot_id].area_ha
             plot_rows.append(schemas.PlotSummary(
                 plot_id=plot_id, plot_name=plots[plot_id].name,
-                total_kg=round(kg, 2), yield_kg_per_ha=round(kg / area, 2),
-                total_cost=round(cost, 2),
-                cost_per_kg=round(cost / kg, 2) if kg else None,
+                total_kg=_round2(kg), yield_kg_per_ha=_round2(kg / area),
+                total_cost=_round2(cost),
+                cost_per_kg=_round2(cost / kg) if kg else None,
             ))
         # rendimiento global: sobre la superficie de los lotes que produjeron en el periodo
-        producing_area = sum(float(plots[pid].area_ha) for pid in by_plot)
+        producing_area = sum((plots[pid].area_ha for pid in by_plot), ZERO)
 
         return schemas.SummaryResponse(
-            total_kg=round(total, 2),
+            total_kg=_round2(total),
             harvest_count=len(harvests),
-            yield_kg_per_ha=round(total / producing_area, 2) if producing_area else 0.0,
+            yield_kg_per_ha=_round2(total / producing_area) if producing_area else ZERO,
             last_harvest_on=last,
             by_plot=plot_rows,
             by_month=[
-                schemas.MonthSummary(month=m, total_kg=round(kg, 2))
+                schemas.MonthSummary(month=m, total_kg=_round2(kg))
                 for m, kg in sorted(by_month.items())
             ],
             by_grade=[
-                schemas.GradeSummary(grade=g, total_kg=round(kg, 2))
+                schemas.GradeSummary(grade=g, total_kg=_round2(kg))
                 for g, kg in sorted(by_grade.items(), key=lambda kv: -kv[1])
             ],
-            total_cost=round(total_cost, 2),
-            cost_per_kg=round(total_cost / total, 2) if total else None,
+            total_cost=_round2(total_cost),
+            cost_per_kg=_round2(total_cost / total) if total else None,
             by_category=[
-                schemas.CategorySummary(category=c, total=round(v, 2))
+                schemas.CategorySummary(category=c, total=_round2(v))
                 for c, v in sorted(cost_by_category.items(), key=lambda kv: -kv[1])
             ],
         )
