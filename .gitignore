@@ -1,0 +1,118 @@
+
+# ---------------------------------------------------------------------
+# Credenciales y variables de entorno 
+# ---------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+.flaskenv
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+id_rsa*
+credentials*.json
+*service-account*.json
+secrets.*
+
+# ---------------------------------------------------------------------
+# Python (backend)
+# ---------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Entornos virtuales
+.venv/
+venv/
+env/
+backend/bin/
+backend/lib/
+backend/include/
+pyvenv.cfg
+
+# Empaquetado
+build/
+develop-eggs/
+eggs/
+.eggs/
+sdist/
+wheels/
+*.egg-info/
+*.egg
+.installed.cfg
+
+# Testing / cobertura / linters
+.pytest_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+nosetests.xml
+*.cover
+.hypothesis/
+.mypy_cache/
+.ruff_cache/
+.cache/
+
+# Bases de datos locales
+*.db
+*.sqlite
+*.sqlite3
+
+# ---------------------------------------------------------------------
+# Node / Vite (frontend)
+# ---------------------------------------------------------------------
+node_modules/
+dist/
+dist-ssr/
+*.local
+.vite/
+*.tsbuildinfo
+coverage/
+.eslintcache
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.pnpm-store/
+
+frontend/.removed/
+
+# ---------------------------------------------------------------------
+# Logs
+# ---------------------------------------------------------------------
+logs/
+*.log
+
+# ---------------------------------------------------------------------
+# Herramientas: Claude Code / graphify
+# ---------------------------------------------------------------------
+# graphify-out es un artefacto regenerable (6 MB, caché, rutas locales)
+graphify-out/
+# Ajustes locales de Claude Code (permisos personales, etc.)
+.claude/settings.local.json
+.claude
+skills-lock.json
+
+# ---------------------------------------------------------------------
+# IDEs y sistema operativo
+# ---------------------------------------------------------------------
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*.sw?
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+.DS_Store
+Thumbs.db
+desktop.ini

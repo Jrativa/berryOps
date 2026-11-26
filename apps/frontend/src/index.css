@@ -1,0 +1,102 @@
+@import "tailwindcss";
+
+/*
+ * Paleta de arándanos (se mantiene tal cual):
+ *   cream · midnight · dusty · purple · purple-dark
+ * Los tokens derivados (surface, hairline, glass) se calculan a partir de ellos.
+ */
+:root {
+  --cream: oklch(0.98 0.015 80);
+  --midnight: oklch(0.18 0.08 278);
+  --dusty: oklch(0.55 0.03 65);
+  --purple: oklch(0.52 0.23 290);
+  --purple-dark: oklch(0.44 0.22 285);
+
+  --surface: oklch(1 0 0);
+  --hairline: color-mix(in oklch, var(--midnight) 8%, transparent);
+  --glass: color-mix(in oklch, var(--cream) 72%, transparent);
+  --danger: oklch(0.55 0.2 27);
+
+  /* Estados de planta: "sana" retrocede, las excepciones destacan */
+  --st-healthy: color-mix(in oklab, var(--purple) 16%, var(--surface));
+  --st-attention: oklch(0.83 0.15 85);
+  --st-sick: oklch(0.66 0.2 35);
+  --st-dead: oklch(0.3 0.04 278);
+}
+
+@theme inline {
+  --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text",
+    "Segoe UI", system-ui, sans-serif;
+  --font-display: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI Variable Display",
+    "Segoe UI", system-ui, sans-serif;
+
+  --color-cream: var(--cream);
+  --color-midnight: var(--midnight);
+  --color-dusty: var(--dusty);
+  --color-purple: var(--purple);
+  --color-purple-dark: var(--purple-dark);
+  --color-surface: var(--surface);
+  --color-hairline: var(--hairline);
+  --color-danger: var(--danger);
+
+  --radius-card: 1.5rem;
+  --radius-control: 0.875rem;
+}
+
+@layer base {
+  html {
+    background: var(--cream);
+    color: var(--midnight);
+    font-family: var(--font-sans);
+    font-size: 100%;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    min-height: 100dvh;
+  }
+  /* Tracking por tamaño: los textos grandes se aprietan, el cuerpo queda en 0 */
+  h1, h2, h3 {
+    font-family: var(--font-display);
+    font-optical-sizing: auto;
+    text-wrap: balance;
+  }
+  h1 { letter-spacing: -0.03em; line-height: 1.05; }
+  h2 { letter-spacing: -0.02em; line-height: 1.15; }
+  h3 { letter-spacing: -0.01em; line-height: 1.25; }
+  :focus-visible {
+    outline: 3px solid color-mix(in oklch, var(--purple) 45%, transparent);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: color-mix(in oklch, var(--purple) 25%, transparent);
+  }
+}
+
+@layer components {
+  /* Material translúcido: la barra flota y el contenido pasa por debajo */
+  .glass {
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
+  }
+  /* Material sobre imagen: más oscuro, con borde superior que "atrapa la luz" */
+  .glass-dark {
+    background: color-mix(in oklch, var(--midnight) 38%, transparent);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
+    backdrop-filter: blur(24px) saturate(160%);
+    border-top: 1px solid color-mix(in oklch, white 28%, transparent);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .glass { background: var(--cream); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .glass-dark { background: var(--midnight); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+
+@media (prefers-contrast: more) {
+  :root { --hairline: color-mix(in oklch, var(--midnight) 40%, transparent); }
+  .glass { background: var(--cream); }
+}
