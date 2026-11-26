@@ -124,9 +124,6 @@ class AuthService:
             raise ValueError("Token inválido o expirado")
         return user
 
-    def has_users(self) -> bool:
-        return self.user_repo.exists_any()
-
     @staticmethod
     def is_admin(user) -> bool:
         return user.role.name.strip().lower() in settings.admin_roles
