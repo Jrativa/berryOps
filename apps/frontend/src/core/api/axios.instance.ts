@@ -15,9 +15,45 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Una sola renovación en vuelo: el backend rota el refresh token y trata la
+// reutilización de uno ya rotado como robo (revoca todas las sesiones).
+let refreshInFlight: Promise<string> | null = null;
+
+function endSession() {
+  sessionStorage.removeItem('access_token');
+  sessionStorage.removeItem('refresh_token');
+  sessionStorage.removeItem('user_data');
+  window.location.href = '/login';
+}
+
+async function requestNewTokens(refreshToken: string): Promise<string> {
+  try {
+    // axios "pelado": sin interceptores, para no entrar en bucle. El backend espera el token en el cuerpo
+    const res = await axios.post(
+      `${api.defaults.baseURL}/auth/refresh`,
+      { refresh_token: refreshToken },
+      { withCredentials: true }
+    );
+    sessionStorage.setItem('access_token', res.data.access_token);
+    sessionStorage.setItem('refresh_token', res.data.refresh_token);
+    return res.data.access_token;
+  } catch (refreshError) {
+    // Si el refresh token también expiró, cerramos la sesión (una sola vez)
+    endSession();
+    throw refreshError;
+  }
+}
+
+function refreshAccessToken(refreshToken: string): Promise<string> {
+  refreshInFlight ??= requestNewTokens(refreshToken).finally(() => {
+    refreshInFlight = null;
+  });
+  return refreshInFlight;
+}
+
 // Interceptor de RESPUESTA: La magia del Refresh Token
 api.interceptors.response.use(
-  (response) => response, 
+  (response) => response,
   async (error) => {
     const originalRequest = error.config;
 
@@ -28,32 +64,10 @@ api.interceptors.response.use(
     // Si el error es 401 (No autorizado) y no hemos reintentado ya
     if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint && refreshToken) {
       originalRequest._retry = true;
-
-      try {
-        // El backend espera el refresh token en el cuerpo
-        const res = await axios.post(
-          `${import.meta.env.VITE_API_URL}/auth/refresh`,
-          { refresh_token: refreshToken },
-          { withCredentials: true }
-        );
-
-        // Guardamos los nuevos tokens
-        const newAccessToken = res.data.access_token;
-        sessionStorage.setItem('access_token', newAccessToken);
-        sessionStorage.setItem('refresh_token', res.data.refresh_token);
-
-        // Reintentamos la petición original que falló con el nuevo token
-        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
-        return api(originalRequest);
-        
-      } catch (refreshError) {
-        // Si el refresh token también expiró, cerramos la sesión
-        sessionStorage.removeItem('access_token');
-        sessionStorage.removeItem('refresh_token');
-        sessionStorage.removeItem('user_data');
-        window.location.href = '/login';
-        return Promise.reject(refreshError);
-      }
+      const newAccessToken = await refreshAccessToken(refreshToken);
+      // Reintentamos la petición original que falló con el nuevo token
+      originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+      return api(originalRequest);
     }
     return Promise.reject(error);
   }
