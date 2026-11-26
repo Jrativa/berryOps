@@ -1,5 +1,7 @@
 # Arquitectura
 
+> Legacy document (Spanish). Being replaced by English docs as areas are rewritten; see docs/README.md.
+
 ## 1. Visión general
 
 ```
@@ -16,8 +18,8 @@
                                                          └─────────────────┘
 ```
 
-- Monorepo con dos aplicaciones independientes (`backend/`, `frontend/`).
-- Comunicación únicamente vía API REST. CORS permite solo `http://localhost:5173`.
+- Monorepo con dos aplicaciones independientes (`apps/backend/`, `apps/frontend/`).
+- Comunicación únicamente vía API REST. CORS permite los orígenes de `CORS_ORIGINS` (por defecto `http://localhost:5173`; `*` se rechaza).
 - Autenticación con **access token JWT** (corto) + **refresh token opaco** persistido en base de datos.
 
 ## 2. Backend: Arquitectura hexagonal por feature
@@ -25,10 +27,10 @@
 Cada feature (`auth`, `inventory`, y los esqueletos `sales`, `expenses`) sigue la misma estructura de cuatro capas:
 
 ```
-src/features/<feature>/
+apps/backend/src/features/<feature>/
 ├── domain/           Contratos puros: schemas Pydantic y puertos (typing.Protocol)
 ├── application/      Casos de uso / servicios; solo dependen de los puertos
-├── infrastructure/   Adaptadores concretos, uno por motor (postgres/, futuro mongo/)
+├── infrastructure/   Adaptadores concretos (hoy solo postgres/)
 └── presentation/     Routers FastAPI (HTTP)
 ```
 
@@ -38,25 +40,22 @@ El servicio de aplicación nunca importa SQLAlchemy; recibe repositorios por con
 ```
  routes.py ──Depends──► dependencies.get_auth_service ──► AuthService(user_repo, role_repo, session_repo)
                                   │                                   │ usa
-                                  │ importlib                         ▼
-                                  ▼                         domain.repository_ports (Protocol)
-        infrastructure.<DB_ENGINE>.repositories  ─ implementa ─────────┘
+                                  │ construye con la sesión           ▼
+                                  │ del UnitOfWork            domain.repository_ports (Protocol)
+                                  ▼                                   ▲
+        infrastructure.postgres.repositories  ─ implementa ──────────┘
 ```
 
-### Selección dinámica del motor de base de datos
-El valor `DB_ENGINE` (por defecto `postgres`) determina dos cosas, ambas con `importlib`:
+Solo existe el adaptador PostgreSQL. No hay selector de motor: `dependencies.py` importa `infrastructure.postgres.repositories` directamente (la variable `DB_ENGINE`, el `importlib` y el soporte de MongoDB ya no existen).
 
-1. `core/databases/__init__.py` carga `src.core.databases.<engine>_db` y expone `get_db` e `init_db`.
-2. `features/auth/dependencies.py` carga `src.features.auth.infrastructure.<engine>.repositories`.
-
-Para soportar MongoDB bastaría con añadir `mongo_db.py` y `infrastructure/mongo/` (hoy **no existen**; `DB_ENGINE=mongo` falla al arrancar).
-
-### Núcleo (`src/core`)
-- `config.py` — `Settings` (pydantic-settings) leída de `.env`; construye `DATABASE_URL` según el motor.
-- `databases/postgres_db.py` — `engine`, `SessionLocal`, `Base`, `get_db()` (sesión por petición) e `init_db()` (`create_all`).
+### Núcleo (`apps/backend/src/core`)
+- `config.py` — `Settings` (pydantic-settings) leída de `apps/backend/.env`; construye `DATABASE_URL` con `DB_USER/PASSWORD/HOST/PORT/NAME`.
+- `databases/postgres_db.py` — `engine`, `SessionLocal` y la única `Base` declarativa. No crea tablas: el esquema lo gestiona Alembic.
+- `uow.py` — unidad de trabajo: una sesión y **una transacción por petición** (commit si termina bien, rollback ante cualquier excepción). Se obtiene con el alias `UnitOfWork` (`scope="function"`); los repositorios solo hacen `flush()`. Ver [ADR-003](adr/003-unit-of-work.md).
+- `errors.py` — envelope de errores `{detail, code}` y mapeo de `IntegrityError` (409/422).
 
 ### Arranque (`src/main.py`)
-`init_db()` se ejecuta al importar, se crea la app `FastAPI`, se añade CORS y se monta el router de auth bajo `/auth`.
+Se crea la app `FastAPI`, se registran los manejadores de error (`register_error_handlers`), se añade CORS y se montan los routers de auth bajo `/auth` y de inventario bajo `/inventory`. No se crean tablas al arrancar.
 
 ## 3. Modelo de datos (PostgreSQL)
 
@@ -73,7 +72,7 @@ users (id UUID PK, role_id FK, username UNIQUE, email UNIQUE, password_hash,
 user_sessions (id UUID PK, user_id FK, refresh_token UNIQUE, expires_at, is_revoked)
 ```
 
-Las tablas se crean con `Base.metadata.create_all`; no hay migraciones (Alembic).
+Las tablas las crea Alembic (`apps/backend/migrations/`, revisión `0001_baseline`); la aplicación no ejecuta `create_all`. Ver [operations/migrations.md](operations/migrations.md).
 
 ## 4. Flujo de autenticación
 
@@ -89,11 +88,11 @@ Petición protegida
  axios request interceptor añade  Authorization: Bearer <access_token>
 
 Expiración (401)
- axios response interceptor → POST /auth/refresh → reintenta la petición original una vez
- si falla → limpia sessionStorage y redirige a /login
+ axios response interceptor → POST /auth/refresh (una sola renovación en vuelo, compartida) → reintenta la petición original una vez
+ si falla → limpia sessionStorage una vez y redirige a /login
 ```
 
-Notas de diseño actuales: ver "Deuda técnica" en [DESARROLLO.md](DESARROLLO.md) (el cliente no envía el refresh token en el cuerpo, ningún endpoint valida aún el JWT, etc.).
+Los endpoints protegidos validan el JWT (`get_current_user`) y el cliente envía el refresh token en el cuerpo de `/auth/refresh`. Deuda pendiente: ver "Deuda técnica" en [DESARROLLO.md](DESARROLLO.md) y [tech-debt.md](tech-debt.md).
 
 ## 5. Frontend: módulos por dominio
 
@@ -115,7 +114,7 @@ Replica la separación del backend (application / infrastructure / ui). Los comp
 
 | Decisión | Motivo |
 |---|---|
-| Puertos `Protocol` + adaptadores por motor | Cambiar de BD sin tocar la lógica de negocio |
+| Puertos `Protocol` + adaptadores de infraestructura | La lógica de negocio no depende de SQLAlchemy y se prueba con repositorios en memoria |
 | Feature-first (vertical slices) | Añadir sales/expenses sin afectar auth |
 | JWT corto + refresh en BD | Permite revocar sesiones (`is_revoked`) |
 | Zustand + sessionStorage | Estado ligero; sesión ligada a la pestaña |

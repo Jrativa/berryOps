@@ -1,5 +1,7 @@
 # Frontend
 
+> Legacy document (Spanish). Being replaced by English docs as areas are rewritten; see docs/README.md.
+
 Stack: React 19 · TypeScript 6 · Vite 8 · Tailwind CSS 4 · shadcn/ui sobre Radix · Zustand 5 · React Router 7 · axios · i18next / react-i18next · lucide-react. Gestor de paquetes: **pnpm**.
 
 ## Diseño (principios de apple-design)
@@ -15,7 +17,7 @@ Paleta de arándanos intacta (`cream`, `midnight`, `dusty`, `purple`, `purple-da
 ## Árbol de código
 
 ```
-frontend/src/
+apps/frontend/src/
 ├── main.tsx / App.tsx        Entrada, MotionConfig y rutas (/, /login, /home protegida)
 ├── core/api/axios.instance.ts  Cliente + refresh con rotación
 ├── i18n/                     en / es (todas las cadenas, incluida la home)
@@ -39,6 +41,8 @@ frontend/src/
 ## Sesión
 
 `authStore` restaura `user` desde sessionStorage al cargar. `logout()` cierra la sesión local al instante y revoca en segundo plano el refresh token (`POST /auth/logout`). El interceptor de axios envía `{refresh_token}` a `/auth/refresh`, guarda los dos tokens nuevos y no reintenta en 401 de login/refresh.
+
+**Refresh de una sola vez (single-flight)** (`core/api/axios.instance.ts`): el backend rota el refresh token y trata la reutilización de uno ya rotado como robo (revoca todas las sesiones), así que varias peticiones simultáneas con 401 no pueden pedir cada una su renovación. Todas comparten una única promesa de renovación (`refreshInFlight`) y reintentan con el mismo access token nuevo. Si la renovación falla, se limpia `sessionStorage` y se redirige a `/login` una sola vez. Pruebas: `axios.instance.test.ts` (2 y 5 peticiones paralelas, y el caso de fallo). Deuda abierta: los tokens siguen en `sessionStorage` y, al fallar el refresh, el store de zustand (`authStore`) no se actualiza; la redirección completa de la página es lo que lo reinicia ([tech-debt.md](tech-debt.md)).
 
 La home enlaza al inventario; ventas, gastos y (para admin) usuarios y roles siguen como "Próximamente".
 

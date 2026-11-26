@@ -1,13 +1,15 @@
 # Referencia de la API
 
+> Legacy document (Spanish). Being replaced by English docs as areas are rewritten; see docs/README.md.
+
 Base: `http://localhost:8000` · Swagger interactivo: `/docs` · OpenAPI: `/openapi.json`
 
 | Método | Ruta | Descripción | Body | Respuesta |
 |---|---|---|---|---|
 | GET | `/` | Mensaje de bienvenida | — | `{message}` |
-| POST | `/auth/roles/` | Crear rol (solo admin; libre si no hay usuarios) | `RoleCreate` | `RoleResponse` |
-| POST | `/auth/users/` | Registrar usuario (solo admin; libre si no hay usuarios) | `UserCreate` | `UserResponse` |
-| GET | `/auth/users/{username}` | Obtener usuario (Bearer) | — | `UserResponse` / 404 |
+| POST | `/auth/roles/` | Crear rol (siempre exige un administrador autenticado) | `RoleCreate` | `RoleResponse` |
+| POST | `/auth/users/` | Registrar usuario (siempre exige un administrador autenticado) | `UserCreate` | `UserResponse` |
+| GET | `/auth/users/{username}` | Obtener el propio perfil (Bearer). Otro `username`, exista o no, responde el mismo 404 | — | `UserResponse` / 404 |
 | POST | `/auth/login` | Iniciar sesión | `LoginRequest` | `LoginResponse` |
 | POST | `/auth/refresh` | Renovar access token (rota el refresh token) | `RefreshTokenRequest` | `LoginResponse`* |
 | POST | `/auth/logout` | Cerrar sesión (revoca el refresh token; idempotente) | `RefreshTokenRequest` | 204 |
@@ -20,16 +22,20 @@ Base: `http://localhost:8000` · Swagger interactivo: `/docs` · OpenAPI: `/open
 RoleCreate      { "name": str, "description"?: str }
 RoleResponse    { "id": uuid, "name": str, "description"?: str }
 UserCreate      { "username": str, "email": email, "full_name": str,
-                  "role_id": uuid, "created_by"?: str, "password": str(min 8) }
+                  "role_id": uuid, "created_by"?: str, "password": str(8..72 bytes UTF-8) }
 UserResponse    { "id": uuid, "username", "email", "full_name", "role_id",
                   "created_by"?, "is_active": bool, "created_at": datetime }
-LoginRequest    { "username": str(min 3), "password": str(min 8) }
+LoginRequest    { "username": str(min 3), "password": str(8..72 bytes UTF-8) }
 LoginResponse   { "access_token", "token_type": "bearer", "refresh_token",
                   "username", "role" }
 RefreshTokenRequest { "refresh_token": str }
 ```
 
 ## Códigos de error
+
+Toda respuesta de error (salvo la validación 422 de FastAPI) tiene la forma `{"detail": str, "code": str}`; `details` es opcional. `detail` es el mensaje para personas (el frontend lo lee) y `code` el identificador para máquinas: `BAD_REQUEST` (400), `UNAUTHORIZED` (401), `FORBIDDEN` (403), `NOT_FOUND` (404), `CONFLICT` (409), `HTTP_ERROR` (otros). Los errores de validación del cuerpo o los parámetros (422) conservan la forma de FastAPI (`detail` es una lista, sin `code`).
+
+Los errores de integridad de la base de datos se traducen sin exponer texto de la BD: clave duplicada → 409 `CONFLICT`; referencia inexistente o en uso → 422 `INVALID_REFERENCE`; restricción `CHECK` → 422 `CONSTRAINT_VIOLATION`.
 
 | Situación | Código | `detail` |
 |---|---|---|
@@ -38,11 +44,16 @@ RefreshTokenRequest { "refresh_token": str }
 | Usuario inactivo | 400 | "Usuario inactivo" |
 | Refresh token inválido/expirado | 401 | "Refresh token inválido o expirado" |
 | Sin permisos de administrador | 403 | "Se requieren permisos de administrador" |
+| Contraseña < 8 caracteres o > 72 bytes UTF-8 (crear usuario y login) | 422 | lista de errores de FastAPI (sin `code`) |
 | Usuario no encontrado | 404 | "Usuario no encontrado" |
+| Nombre de usuario duplicado | 409 | "Ya existe un registro con esos datos" (`CONFLICT`) |
+| `role_id` inexistente | 422 | "Referencia a un recurso que no existe o que sigue en uso" (`INVALID_REFERENCE`) |
 
 ## Autenticación
 
-El access token es un JWT (`sub` = id de usuario, `exp`). Se envía como `Authorization: Bearer <token>`. Lo exigen `/auth/users/{username}`, `/auth/roles/` y `/auth/users/` (estos dos solo mientras exista algún usuario). Sin token o con token inválido: 401.
+El access token es un JWT (`sub` = id de usuario, `exp`). Se envía como `Authorization: Bearer <token>`. Lo exigen `/auth/users/{username}`, `/auth/roles/` y `/auth/users/` (estos dos, además, con rol de administrador; no hay excepción de arranque). Sin token o con token inválido: 401. El primer administrador no se crea por la API sino con el CLI `bootstrap` ([DESARROLLO.md](DESARROLLO.md)).
+
+La contraseña admite como máximo 72 bytes UTF-8 (bcrypt truncaría el resto en silencio); más es 422 al crear el usuario y también en el login.
 
 ## Refresh tokens
 
@@ -80,6 +91,8 @@ PlotCreate     { "name": str(1-100), "variety": str, "area_ha": float(>0), "plan
                  "plant_count"?: int, "notes"?: str(<=500) }
 HarvestCreate  { "harvested_on": date, "quantity_kg": float(>0), "grade": "premium|standard|processing", "notes"?: str }
 ```
+
+Los campos numéricos (`area_ha`, `quantity_kg`, `amount` y los totales del resumen) siguen siendo **números JSON**; internamente se calculan en `Decimal` y los totales y razones del resumen se redondean a 2 decimales (`ROUND_HALF_UP`) al salir. Los endpoints nuevos usarán cadenas decimales ([adr/011-decimal-money-and-units.md](adr/011-decimal-money-and-units.md)); aún no existen.
 
 Reglas (400): fecha de siembra o de cosecha futura, cosecha anterior a la siembra del lote, lote archivado, nombre de lote repetido, `from` posterior a `to`.
 El rendimiento global se calcula sobre la superficie de los lotes que produjeron en el periodo.
